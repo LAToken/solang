@@ -28,6 +28,7 @@ pub fn link(input: &[u8], target: &Target) -> Vec<u8> {
     // rely on LLVM to optimize them away, with e.g. LLVMAddInternalizePassWithMustPreservePredicate()
     // or something like that.
     let allowed_externs = |name: &str| match target {
+        Target::Lachain => name == "start",
         Target::Ewasm => name == "main",
         Target::Substrate => name == "deploy" || name == "call",
         Target::Sabre => name == "entrypoint",
@@ -82,6 +83,11 @@ pub fn link(input: &[u8], target: &Target) -> Vec<u8> {
         }
 
         match target {
+            Target::Lachain => imports.push(ImportEntry::new(
+                "env".into(),
+                "memory".into(),
+                elements::External::Memory(elements::MemoryType::new(2, Some(2))),
+            )),
             Target::Ewasm => imports.push(ImportEntry::new(
                 "ethereum".into(),
                 "memory".into(),
