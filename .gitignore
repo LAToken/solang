@@ -1,3 +1,5 @@
+.idea
+
 /docs/build
 Cargo.lock
 /target
