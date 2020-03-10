@@ -165,16 +165,17 @@ contract full_example {
 		if (c.s == suit.hearts) {
 			if (c.v == value.ace) {
 				score = 14;
-			}
-			if (c.v == value.king) {
+			} else if (c.v == value.king) {
 				score = 13;
-			}
-			if (c.v == value.queen) {
+			} else if (c.v == value.queen) {
 				score = 12;
-			}
-			if (c.v == value.jack) {
+			} else if (c.v == value.jack) {
 				score = 11;
+			} else {
+				score = 0;
 			}
+		} else {
+			score = 0;
 		}
 		// all others score 0
 	}

@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.17.2"
-// sha256: 6db352e8f48594e8d5a1a1d91f27957ab42f5bed40b6fd2c626569ecb99a21
+// sha256: c7ccdca846ea81af34e33dad22ed28079e8444a46c9b633ee3558fa56f8bf8
 use std::str::FromStr;
 use num_bigint::BigInt;
 use num_traits::Num;
