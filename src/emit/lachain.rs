@@ -82,7 +82,7 @@ impl LachainTarget {
         let args_length = contract
             .builder
             .build_call(
-                contract.module.get_function("getCallDataSize").unwrap(),
+                contract.module.get_function("get_call_size").unwrap(),
                 &[],
                 "calldatasize",
             )
@@ -103,11 +103,11 @@ impl LachainTarget {
             .into_pointer_value();
 
         contract.builder.build_call(
-            contract.module.get_function("callDataCopy").unwrap(),
+            contract.module.get_function("copy_call_value").unwrap(),
             &[
-                args.into(),
                 contract.context.i32_type().const_zero().into(),
                 args_length,
+                args.into(),
             ],
             "",
         );
@@ -140,28 +140,28 @@ impl LachainTarget {
 
         contract
             .module
-            .add_function("storageStore", ftype, Some(Linkage::External));
+            .add_function("save_storage", ftype, Some(Linkage::External));
         contract
             .module
-            .add_function("storageLoad", ftype, Some(Linkage::External));
+            .add_function("load_storage", ftype, Some(Linkage::External));
 
         contract.module.add_function(
-            "getCallDataSize",
+            "get_call_size",
             contract.context.i32_type().fn_type(&[], false),
             Some(Linkage::External),
         );
 
         contract.module.add_function(
-            "callDataCopy",
+            "copy_call_value",
             contract.context.void_type().fn_type(
                 &[
+                    contract.context.i32_type().into(), // fromOffset
+                    contract.context.i32_type().into(), // toOffset (fromOffset+length)
                     contract
                         .context
                         .i8_type()
                         .ptr_type(AddressSpace::Generic)
-                        .into(), // resultOffset
-                    contract.context.i32_type().into(), // dataOffset
-                    contract.context.i32_type().into(), // length
+                        .into(), // toMemoryPtr
                 ],
                 false,
             ),
@@ -176,7 +176,26 @@ impl LachainTarget {
         contract
             .module
             .add_function(
-                "finish",
+                "exit_contract",
+                contract.context.void_type().fn_type(
+                    &[
+                        contract
+                            .context
+                            .i8_type()
+                            .ptr_type(AddressSpace::Generic)
+                            .into(), // data_ptr
+                        contract.context.i32_type().into(), // data_len
+                    ],
+                    false,
+                ),
+                Some(Linkage::External),
+            )
+            .add_attribute(AttributeLoc::Function, noreturn);
+
+        contract
+            .module
+            .add_function(
+                "set_return",
                 contract.context.void_type().fn_type(
                     &[
                         contract
@@ -196,15 +215,10 @@ impl LachainTarget {
         contract
             .module
             .add_function(
-                "revert",
+                "system_halt",
                 contract.context.void_type().fn_type(
                     &[
-                        contract
-                            .context
-                            .i8_type()
-                            .ptr_type(AddressSpace::Generic)
-                            .into(), // data_ptr
-                        contract.context.i32_type().into(), // data_len
+                        contract.context.i32_type().into(), // halt code
                     ],
                     false,
                 ),
@@ -249,7 +263,7 @@ impl LachainTarget {
         );
 
         contract.builder.build_call(
-            contract.module.get_function("finish").unwrap(),
+            contract.module.get_function("exit_contract").unwrap(),
             &[
                 runtime_ptr.into(),
                 contract
@@ -339,7 +353,7 @@ impl TargetRuntime for LachainTarget {
         );
 
         contract.builder.build_call(
-            contract.module.get_function("storageStore").unwrap(),
+            contract.module.get_function("save_storage").unwrap(),
             &[
                 contract
                     .builder
@@ -368,7 +382,7 @@ impl TargetRuntime for LachainTarget {
             .build_alloca(contract.context.custom_width_int_type(256), "value");
 
         contract.builder.build_call(
-            contract.module.get_function("storageLoad").unwrap(),
+            contract.module.get_function("load_storage").unwrap(),
             &[
                 contract
                     .builder
@@ -402,7 +416,7 @@ impl TargetRuntime for LachainTarget {
 
     fn return_empty_abi(&self, contract: &Contract) {
         contract.builder.build_call(
-            contract.module.get_function("finish").unwrap(),
+            contract.module.get_function("exit_contract").unwrap(),
             &[
                 contract
                     .context
@@ -420,7 +434,7 @@ impl TargetRuntime for LachainTarget {
 
     fn return_abi<'b>(&self, contract: &'b Contract, data: PointerValue<'b>, length: IntValue) {
         contract.builder.build_call(
-            contract.module.get_function("finish").unwrap(),
+            contract.module.get_function("exit_contract").unwrap(),
             &[data.into(), length.into()],
             "",
         );
@@ -429,8 +443,9 @@ impl TargetRuntime for LachainTarget {
     }
 
     fn assert_failure<'b>(&self, contract: &'b Contract) {
+
         contract.builder.build_call(
-            contract.module.get_function("revert").unwrap(),
+            contract.module.get_function("set_return").unwrap(),
             &[
                 contract
                     .context
@@ -439,6 +454,14 @@ impl TargetRuntime for LachainTarget {
                     .const_zero()
                     .into(),
                 contract.context.i32_type().const_zero().into(),
+            ],
+            "",
+        );
+
+        contract.builder.build_call(
+            contract.module.get_function("system_halt").unwrap(),
+            &[
+                contract.context.i32_type().const_int(7, false).into(),
             ],
             "",
         );
