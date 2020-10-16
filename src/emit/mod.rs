@@ -4440,7 +4440,7 @@ impl<'a> Contract<'a> {
                 substrate::SubstrateTarget::build(context, contract, ns, filename, opt)
             }
             super::Target::Ewasm => ewasm::EwasmTarget::build(context, contract, ns, filename, opt),
-            super::Target::Lachain => lachain::LachainTarget::build(context, contract, filename, opt),
+            super::Target::Lachain => lachain::LachainTarget::build(context, contract, ns, filename, opt),
             super::Target::Sabre => sabre::SabreTarget::build(context, contract, ns, filename, opt),
             super::Target::Generic => {
                 generic::GenericTarget::build(context, contract, ns, filename, opt)

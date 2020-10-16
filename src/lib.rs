@@ -112,6 +112,7 @@ pub fn parse_and_resolve(filename: &str, cache: &mut FileCache, target: Target) 
             Target::Ewasm => 20,
             Target::Substrate => 32,
             Target::Sabre => 0,    // Sabre has no address type
+            Target::Lachain => 20, // TODO: ??
             Target::Generic => 20, // Same as ethereum
         },
         16,
