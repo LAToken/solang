@@ -491,101 +491,44 @@ impl TargetRuntime for LachainTarget {
         slot: PointerValue,
         ty: IntType<'a>,
     ) -> IntValue<'a> {
-        let address = contract
-            .builder
-            .build_call(
-                contract.module.get_function("alloc").unwrap(),
-                &[contract.context.i32_type().const_int(64, false).into()],
-                "address",
-            )
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
+        let dest = contract.builder.build_array_alloca(
+            contract.context.i8_type(),
+            contract.context.i32_type().const_int(32, false),
+            "buf",
+        );
 
-        // convert slot to address
         contract.builder.build_call(
-            contract.module.get_function("__u256ptohex").unwrap(),
+            contract.module.get_function("load_storage").unwrap(),
             &[
                 contract
                     .builder
                     .build_pointer_cast(
                         slot,
                         contract.context.i8_type().ptr_type(AddressSpace::Generic),
-                        "slot",
+                        "",
                     )
                     .into(),
-                address.into(),
+                contract
+                    .builder
+                    .build_pointer_cast(
+                        dest,
+                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
+                        "",
+                    )
+                    .into(),
             ],
-            "address_from_slot",
-        );
-
-        // create collection for set_state
-        contract.builder.build_call(
-            contract.module.get_function("create_collection").unwrap(),
-            &[address.into()],
             "",
         );
-        let res = contract
-            .builder
-            .build_call(
-                contract.module.get_function("get_state").unwrap(),
-                &[address.into()],
-                "",
-            )
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        let state_size = contract
-            .builder
-            .build_call(
-                contract.module.get_function("get_ptr_len").unwrap(),
-                &[res.into()],
-                "",
-            )
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_int_value();
-
-        let data_size = ty.size_of();
-
-        let exists = contract.builder.build_int_compare(
-            IntPredicate::EQ,
-            state_size,
-            data_size,
-            "storage_exists",
-        );
-
-        let entry = contract.builder.get_insert_block().unwrap();
-
-        let retrieve_block = contract.context.append_basic_block(function, "in_storage");
-        let done_storage = contract
-            .context
-            .append_basic_block(function, "done_storage");
 
         contract
             .builder
-            .build_conditional_branch(exists, retrieve_block, done_storage);
-
-        contract.builder.position_at_end(retrieve_block);
-
-        let loaded_int = contract.builder.build_load(
-            contract
-                .builder
-                .build_pointer_cast(res, ty.ptr_type(AddressSpace::Generic), ""),
-            "loaded_int",
-        );
-
-        contract.builder.build_unconditional_branch(done_storage);
-
-        let res = contract.builder.build_phi(ty, "storage_res");
-
-        res.add_incoming(&[(&loaded_int, retrieve_block), (&ty.const_zero(), entry)]);
-
-        res.as_basic_value().into_int_value()
+            .build_load(
+                contract
+                    .builder
+                    .build_pointer_cast(dest, ty.ptr_type(AddressSpace::Generic), ""),
+                "loaded_int",
+            )
+            .into_int_value()
     }
 
     /// sabre has no keccak256 host function, so call our implementation
