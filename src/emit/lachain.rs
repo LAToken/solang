@@ -47,6 +47,8 @@ impl LachainTarget {
 
         b.emit_function_dispatch(&runtime_code);
 
+        runtime_code.internalize(&["start"]);
+
         let runtime_obj = runtime_code.wasm(true).unwrap();
         let runtime_bs = runtime_code.wasm(true).unwrap();//link(&runtime_obj, &Target::Lachain);
 
@@ -56,16 +58,6 @@ impl LachainTarget {
         let mut b = LachainTarget {
             abi: ethabiencoder::EthAbiEncoder {},
         };
-
-        // externals
-        b.declare_externals(&mut deploy_code);
-
-        // FIXME: this emits the constructors, as well as the functions. In Ethereum Solidity,
-        // no functions can be called from the constructor. We should either disallow this too
-        // and not emit functions, or use lto linking to optimize any unused functions away.
-        deploy_code.emit_functions(&mut b);
-
-        //b.emit_constructor_dispatch(&mut deploy_code, &runtime_bs);
 
         deploy_code
     }
