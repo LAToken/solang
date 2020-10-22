@@ -43,9 +43,7 @@ impl LachainTarget {
 
         // FIXME: this also emits the constructors. We can either rely on lto linking
         // to optimize them away or do not emit them.
-        runtime_code.emit_functions(&mut b);
-
-        b.emit_function_dispatch(&runtime_code);
+        b.emit_functions(&mut runtime_code);
 
         runtime_code.internalize(&["start"]);
 
@@ -318,312 +316,18 @@ impl LachainTarget {
     }
 }
 
-impl TargetRuntime for LachainTarget {
-    fn clear_storage<'a>(
+impl<'a> TargetRuntime<'a> for LachainTarget {
+    fn abi_decode<'b>(
         &self,
-        contract: &'a Contract,
-        _function: FunctionValue,
-        slot: PointerValue<'a>,
-    ) {
-        let value = contract
-            .builder
-            .build_alloca(contract.context.custom_width_int_type(256), "value");
-
-        let value8 = contract.builder.build_pointer_cast(
-            value,
-            contract.context.i8_type().ptr_type(AddressSpace::Generic),
-            "value8",
-        );
-
-        contract.builder.build_call(
-            contract.module.get_function("__bzero8").unwrap(),
-            &[
-                value8.into(),
-                contract.context.i32_type().const_int(4, false).into(),
-            ],
-            "",
-        );
-
-        contract.builder.build_call(
-            contract.module.get_function("save_storage").unwrap(),
-            &[
-                contract
-                    .builder
-                    .build_pointer_cast(
-                        slot,
-                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
-                        "",
-                    )
-                    .into(),
-                value8.into(),
-            ],
-            "",
-        );
-    }
-
-    fn set_storage<'a>(
-        &self,
-        contract: &'a Contract,
-        _function: FunctionValue,
-        slot: PointerValue<'a>,
-        dest: PointerValue<'a>,
-    ) {
-        let value = contract
-            .builder
-            .build_alloca(contract.context.custom_width_int_type(256), "value");
-
-        let value8 = contract.builder.build_pointer_cast(
-            value,
-            contract.context.i8_type().ptr_type(AddressSpace::Generic),
-            "value8",
-        );
-
-        contract.builder.build_call(
-            contract.module.get_function("__bzero8").unwrap(),
-            &[
-                value8.into(),
-                contract.context.i32_type().const_int(4, false).into(),
-            ],
-            "",
-        );
-
-        let val = contract.builder.build_load(dest, "value");
-
-        contract.builder.build_store(
-            contract
-                .builder
-                .build_pointer_cast(value, dest.get_type(), ""),
-            val,
-        );
-
-        contract.builder.build_call(
-            contract.module.get_function("save_storage").unwrap(),
-            &[
-                contract
-                    .builder
-                    .build_pointer_cast(
-                        slot,
-                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
-                        "",
-                    )
-                    .into(),
-                value8.into(),
-            ],
-            "",
-        );
-    }
-
-    fn set_storage_string<'a>(
-        &self,
-        _contract: &'a Contract,
-        _function: FunctionValue,
-        _slot: PointerValue<'a>,
-        _dest: PointerValue<'a>,
-    ) {
-        unimplemented!();
-    }
-
-    fn get_storage_string<'a>(
-        &self,
-        _contract: &Contract<'a>,
-        _function: FunctionValue,
-        _slot: PointerValue<'a>,
-    ) -> PointerValue<'a> {
-        unimplemented!();
-    }
-    fn get_storage_bytes_subscript<'a>(
-        &self,
-        _contract: &Contract<'a>,
-        _function: FunctionValue,
-        _slot: PointerValue<'a>,
-        _index: IntValue<'a>,
-    ) -> IntValue<'a> {
-        unimplemented!();
-    }
-    fn set_storage_bytes_subscript<'a>(
-        &self,
-        _contract: &Contract<'a>,
-        _function: FunctionValue,
-        _slot: PointerValue<'a>,
-        _index: IntValue<'a>,
-        _val: IntValue<'a>,
-    ) {
-        unimplemented!();
-    }
-    fn storage_bytes_push<'a>(
-        &self,
-        _contract: &Contract<'a>,
-        _function: FunctionValue,
-        _slot: PointerValue<'a>,
-        _val: IntValue<'a>,
-    ) {
-        unimplemented!();
-    }
-    fn storage_bytes_pop<'a>(
-        &self,
-        _contract: &Contract<'a>,
-        _function: FunctionValue,
-        _slot: PointerValue<'a>,
-    ) -> IntValue<'a> {
-        unimplemented!();
-    }
-    fn storage_string_length<'a>(
-        &self,
-        _contract: &Contract<'a>,
-        _function: FunctionValue,
-        _slot: PointerValue<'a>,
-    ) -> IntValue<'a> {
-        unimplemented!();
-    }
-
-    fn get_storage_int<'a>(
-        &self,
-        contract: &Contract<'a>,
+        contract: &Contract<'b>,
         function: FunctionValue,
-        slot: PointerValue,
-        ty: IntType<'a>,
-    ) -> IntValue<'a> {
-        let dest = contract.builder.build_array_alloca(
-            contract.context.i8_type(),
-            contract.context.i32_type().const_int(32, false),
-            "buf",
-        );
-
-        contract.builder.build_call(
-            contract.module.get_function("load_storage").unwrap(),
-            &[
-                contract
-                    .builder
-                    .build_pointer_cast(
-                        slot,
-                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
-                        "",
-                    )
-                    .into(),
-                contract
-                    .builder
-                    .build_pointer_cast(
-                        dest,
-                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
-                        "",
-                    )
-                    .into(),
-            ],
-            "",
-        );
-
-        contract
-            .builder
-            .build_load(
-                contract
-                    .builder
-                    .build_pointer_cast(dest, ty.ptr_type(AddressSpace::Generic), ""),
-                "loaded_int",
-            )
-            .into_int_value()
-    }
-
-    /// sabre has no keccak256 host function, so call our implementation
-    fn keccak256_hash(
-        &self,
-        contract: &Contract,
-        src: PointerValue,
-        length: IntValue,
-        dest: PointerValue,
+        args: &mut Vec<BasicValueEnum<'b>>,
+        data: PointerValue<'b>,
+        length: IntValue<'b>,
+        spec: &[ast::Parameter],
     ) {
-        contract.builder.build_call(
-            contract.module.get_function("sha3").unwrap(),
-            &[
-                contract
-                    .builder
-                    .build_pointer_cast(
-                        src,
-                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
-                        "src",
-                    )
-                    .into(),
-                length.into(),
-                contract
-                    .builder
-                    .build_pointer_cast(
-                        dest,
-                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
-                        "dest",
-                    )
-                    .into(),
-                contract.context.i32_type().const_int(32, false).into(),
-            ],
-            "",
-        );
-    }
-
-    fn return_empty_abi(&self, contract: &Contract) {
-        contract.builder.build_call(
-            contract.module.get_function("exit_contract").unwrap(),
-            &[
-                contract
-                    .context
-                    .i8_type()
-                    .ptr_type(AddressSpace::Generic)
-                    .const_zero()
-                    .into(),
-                contract.context.i32_type().const_zero().into(),
-            ],
-            "",
-        );
-
-        contract.builder.build_return(None);
-    }
-
-    fn return_abi<'b>(&self, contract: &'b Contract, data: PointerValue<'b>, length: IntValue) {
-        contract.builder.build_call(
-            contract.module.get_function("exit_contract").unwrap(),
-            &[data.into(), length.into()],
-            "",
-        );
-
-        contract.builder.build_return(None);
-    }
-
-    fn assert_failure<'b>(&self, contract: &'b Contract, data: PointerValue, length: IntValue) {
-        contract.builder.build_call(
-            contract.module.get_function("set_return").unwrap(),
-            &[
-                contract
-                    .context
-                    .i8_type()
-                    .ptr_type(AddressSpace::Generic)
-                    .const_zero()
-                    .into(),
-                contract.context.i32_type().const_zero().into(),
-            ],
-            "",
-        );
-
-        contract.builder.build_call(
-            contract.module.get_function("system_halt").unwrap(),
-            &[
-                contract.context.i32_type().const_int(7, false).into(),
-            ],
-            "",
-        );
-
-        // since revert is marked noreturn, this should be optimized away
-        // however it is needed to create valid LLVM IR
-        contract.builder.build_unreachable();
-    }
-
-    /// ABI encode into a vector for abi.encode* style builtin functions
-    fn abi_encode_to_vector<'b>(
-        &self,
-        _contract: &Contract<'b>,
-        _selector: Option<IntValue<'b>>,
-        _function: FunctionValue,
-        _packed: bool,
-        _args: &[BasicValueEnum<'b>],
-        _spec: &[ast::Type],
-    ) -> PointerValue<'b> {
-        unimplemented!();
+        self.abi
+            .decode(contract, function, args, data, length, spec);
     }
 
     fn abi_encode<'b>(
@@ -686,17 +390,250 @@ impl TargetRuntime for LachainTarget {
         (encoded_data, length)
     }
 
-    fn abi_decode<'b>(
+    /// ABI encode into a vector for abi.encode* style builtin functions
+    fn abi_encode_to_vector<'b>(
         &self,
-        contract: &Contract<'b>,
-        function: FunctionValue,
-        args: &mut Vec<BasicValueEnum<'b>>,
-        data: PointerValue<'b>,
-        length: IntValue<'b>,
-        spec: &[ast::Parameter],
+        _contract: &Contract<'b>,
+        _selector: Option<IntValue<'b>>,
+        _function: FunctionValue,
+        _packed: bool,
+        _args: &[BasicValueEnum<'b>],
+        _spec: &[ast::Type],
+    ) -> PointerValue<'b> {
+        unimplemented!();
+    }
+
+    fn clear_storage(&self, contract: &Contract, _function: FunctionValue, slot: PointerValue) {
+        let value = contract
+            .builder
+            .build_alloca(contract.context.custom_width_int_type(256), "value");
+
+        let value8 = contract.builder.build_pointer_cast(
+            value,
+            contract.context.i8_type().ptr_type(AddressSpace::Generic),
+            "value8",
+        );
+
+        contract.builder.build_call(
+            contract.module.get_function("__bzero8").unwrap(),
+            &[
+                value8.into(),
+                contract.context.i32_type().const_int(4, false).into(),
+            ],
+            "",
+        );
+
+        contract.builder.build_call(
+            contract.module.get_function("save_storage").unwrap(),
+            &[
+                contract
+                    .builder
+                    .build_pointer_cast(
+                        slot,
+                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
+                        "",
+                    )
+                    .into(),
+                value8.into(),
+            ],
+            "",
+        );
+    }
+    fn set_storage(
+        &self,
+        contract: &Contract,
+        _function: FunctionValue,
+        slot: PointerValue,
+        dest: PointerValue,
     ) {
-        self.abi
-            .decode(contract, function, args, data, length, spec);
+        let value = contract
+            .builder
+            .build_alloca(contract.context.custom_width_int_type(256), "value");
+
+        let value8 = contract.builder.build_pointer_cast(
+            value,
+            contract.context.i8_type().ptr_type(AddressSpace::Generic),
+            "value8",
+        );
+
+        contract.builder.build_call(
+            contract.module.get_function("__bzero8").unwrap(),
+            &[
+                value8.into(),
+                contract.context.i32_type().const_int(4, false).into(),
+            ],
+            "",
+        );
+
+        let val = contract.builder.build_load(dest, "value");
+
+        contract.builder.build_store(
+            contract
+                .builder
+                .build_pointer_cast(value, dest.get_type(), ""),
+            val,
+        );
+
+        contract.builder.build_call(
+            contract.module.get_function("save_storage").unwrap(),
+            &[
+                contract
+                    .builder
+                    .build_pointer_cast(
+                        slot,
+                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
+                        "",
+                    )
+                    .into(),
+                value8.into(),
+            ],
+            "",
+        );
+    }
+    fn get_storage_int(
+        &self,
+        contract: &Contract<'a>,
+        function: FunctionValue,
+        slot: PointerValue,
+        ty: IntType<'a>,
+    ) -> IntValue<'a> {
+        let dest = contract.builder.build_array_alloca(
+            contract.context.i8_type(),
+            contract.context.i32_type().const_int(32, false),
+            "buf",
+        );
+
+        contract.builder.build_call(
+            contract.module.get_function("load_storage").unwrap(),
+            &[
+                contract
+                    .builder
+                    .build_pointer_cast(
+                        slot,
+                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
+                        "",
+                    )
+                    .into(),
+                contract
+                    .builder
+                    .build_pointer_cast(
+                        dest,
+                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
+                        "",
+                    )
+                    .into(),
+            ],
+            "",
+        );
+
+        contract
+            .builder
+            .build_load(
+                contract
+                    .builder
+                    .build_pointer_cast(dest, ty.ptr_type(AddressSpace::Generic), ""),
+                "loaded_int",
+            )
+            .into_int_value()
+    }
+    fn set_storage_string(
+        &self,
+        _contract: &Contract,
+        _function: FunctionValue,
+        _slot: PointerValue,
+        _dest: PointerValue,
+    ) {
+        unimplemented!();
+    }
+    fn get_storage_string(
+        &self,
+        _contract: &Contract<'a>,
+        _function: FunctionValue,
+        _slot: PointerValue<'a>,
+    ) -> PointerValue<'a> {
+        unimplemented!();
+    }
+    fn get_storage_bytes_subscript(
+        &self,
+        _contract: &Contract<'a>,
+        _function: FunctionValue,
+        _slot: PointerValue<'a>,
+        _index: IntValue<'a>,
+    ) -> IntValue<'a> {
+        unimplemented!();
+    }
+
+    fn set_storage_bytes_subscript(
+        &self,
+        _contract: &Contract<'a>,
+        _function: FunctionValue,
+        _slot: PointerValue<'a>,
+        _index: IntValue<'a>,
+        _val: IntValue<'a>,
+    ) {
+        unimplemented!();
+    }
+
+    fn storage_bytes_push(
+        &self,
+        _contract: &Contract<'a>,
+        _function: FunctionValue,
+        _slot: PointerValue<'a>,
+        _val: IntValue<'a>,
+    ) {
+        unimplemented!();
+    }
+
+    fn storage_bytes_pop(
+        &self,
+        _contract: &Contract<'a>,
+        _function: FunctionValue,
+        _slot: PointerValue<'a>,
+    ) -> IntValue<'a> {
+        unimplemented!();
+    }
+
+    fn storage_string_length(
+        &self,
+        _contract: &Contract<'a>,
+        _function: FunctionValue,
+        _slot: PointerValue<'a>,
+    ) -> IntValue<'a> {
+        unimplemented!();
+    }
+
+    /// sabre has no keccak256 host function, so call our implementation
+    fn keccak256_hash(
+        &self,
+        contract: &Contract,
+        src: PointerValue,
+        length: IntValue,
+        dest: PointerValue,
+    ) {
+        contract.builder.build_call(
+            contract.module.get_function("sha3").unwrap(),
+            &[
+                contract
+                    .builder
+                    .build_pointer_cast(
+                        src,
+                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
+                        "src",
+                    )
+                    .into(),
+                length.into(),
+                contract
+                    .builder
+                    .build_pointer_cast(
+                        dest,
+                        contract.context.i8_type().ptr_type(AddressSpace::Generic),
+                        "dest",
+                    )
+                    .into(),
+                contract.context.i32_type().const_int(32, false).into(),
+            ],
+            "",
+        );
     }
 
     fn print(&self, contract: &Contract, string_ptr: PointerValue, string_len: IntValue) {
@@ -709,6 +646,75 @@ impl TargetRuntime for LachainTarget {
             ],
             "",
         );
+    }
+
+    fn return_empty_abi(&self, contract: &Contract) {
+        contract.builder.build_call(
+            contract.module.get_function("exit_contract").unwrap(),
+            &[
+                contract
+                    .context
+                    .i8_type()
+                    .ptr_type(AddressSpace::Generic)
+                    .const_zero()
+                    .into(),
+                contract.context.i32_type().const_zero().into(),
+            ],
+            "",
+        );
+
+        contract.builder.build_return(None);
+    }
+
+    // ewasm main cannot return any value
+    fn return_u32<'b>(&self, contract: &'b Contract, _ret: IntValue<'b>) {
+        self.assert_failure(
+            contract,
+            contract
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::Generic)
+                .const_null(),
+            contract.context.i32_type().const_zero(),
+        );
+    }
+
+    fn return_abi<'b>(&self, contract: &'b Contract, data: PointerValue<'b>, length: IntValue) {
+        contract.builder.build_call(
+            contract.module.get_function("exit_contract").unwrap(),
+            &[data.into(), length.into()],
+            "",
+        );
+
+        contract.builder.build_return(None);
+    }
+
+    fn assert_failure<'b>(&self, contract: &'b Contract, data: PointerValue, length: IntValue) {
+        contract.builder.build_call(
+            contract.module.get_function("set_return").unwrap(),
+            &[
+                contract
+                    .context
+                    .i8_type()
+                    .ptr_type(AddressSpace::Generic)
+                    .const_zero()
+                    .into(),
+                contract.context.i32_type().const_zero().into(),
+            ],
+            "",
+        );
+
+        contract.builder.build_call(
+            contract.module.get_function("system_halt").unwrap(),
+            &[
+                contract.context.i32_type().const_int(7, false).into(),
+            ],
+            "",
+        );
+
+        // since revert is marked noreturn, this should be optimized away
+        // however it is needed to create valid LLVM IR
+        contract.builder.build_unreachable();
     }
 
     fn create_contract<'b>(
@@ -831,13 +837,15 @@ impl TargetRuntime for LachainTarget {
     fn external_call<'b>(
         &self,
         contract: &Contract<'b>,
+        function: FunctionValue,
+        success: Option<&mut BasicValueEnum<'b>>,
         payload: PointerValue<'b>,
         payload_len: IntValue<'b>,
         address: PointerValue<'b>,
         gas: IntValue<'b>,
         value: IntValue<'b>,
         callty: ast::CallTy,
-    ) -> IntValue<'b> {
+    ) {
         // value is a u128
         let value_ptr = contract
             .builder
@@ -875,7 +883,18 @@ impl TargetRuntime for LachainTarget {
             .try_as_basic_value()
             .left()
             .unwrap()
-            .into_int_value()
+            .into_int_value();
+    }
+
+    /// builtin expressions
+    fn builtin<'b>(
+        &self,
+        _contract: &Contract<'b>,
+        _expr: &ast::Expression,
+        _vartab: &HashMap<usize, Variable<'b>>,
+        _function: FunctionValue<'b>,
+    ) -> BasicValueEnum<'b> {
+        unimplemented!();
     }
 
     fn return_data<'b>(&self, contract: &Contract<'b>) -> PointerValue<'b> {
@@ -980,18 +999,6 @@ impl TargetRuntime for LachainTarget {
         );
 
         v
-    }
-
-    /// builtin expressions
-    fn builtin<'b>(
-        &self,
-        _contract: &Contract<'b>,
-        _expr: &ast::Expression,
-        _vartab: &HashMap<usize, Variable<'b>>,
-        _function: FunctionValue<'b>,
-        _runtime: &dyn TargetRuntime,
-    ) -> BasicValueEnum<'b> {
-        unimplemented!();
     }
 
     /// ewasm value is always 128 bits
@@ -1289,19 +1296,6 @@ impl TargetRuntime for LachainTarget {
                 encoded_topics[3].into(),
             ],
             "",
-        );
-    }
-
-    // ewasm main cannot return any value
-    fn return_u32<'b>(&self, contract: &'b Contract, _ret: IntValue<'b>) {
-        self.assert_failure(
-            contract,
-            contract
-                .context
-                .i8_type()
-                .ptr_type(AddressSpace::Generic)
-                .const_null(),
-            contract.context.i32_type().const_zero(),
         );
     }
 
